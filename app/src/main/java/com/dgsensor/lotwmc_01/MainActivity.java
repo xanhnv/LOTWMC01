@@ -14,81 +14,87 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.snackbar.Snackbar;
-
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import android.os.Environment;
 import android.provider.Settings;
 import android.util.Log;
-import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.CompoundButton;
-import android.widget.ListView;
+import android.widget.EditText;
 import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.text.DecimalFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
+import java.lang.reflect.Array;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
 
-    TextView tvID, tvVol, tvName, txtTampering, txtReverse, txtLastTam, txtLastRev;
-    ListView listDev;
-    Button btnRead, btnOffLcd, btnOnLcd;
-    RadioGroup radioGr1;
-    RadioButton rdbRead,rdbOnLcd,rdbOffLcd;
+    RadioButton rdbRead, rdbWrite;
+    TextView tvResetCount, tvTimestart, tvTimeStop, tvErrorCode, tvRssi,  tvRtc, tvDgsID;
+    CheckBox ckbSetVol, ckbSetNbOn, ckbSendLive, ckbClearWarning, ckbSetID;
+    EditText edtVol, edtWmid;
     private NfcAdapter mAdapter;
     private PendingIntent mPendingIntent;
     private IntentFilter[] mFilters;
     private String[][] mTechLists;
     private DataDevice ma = (DataDevice) getApplication();
     private long cpt = 0;
-    String[] catBlocks = null;
     String[] catValueBlocks = null;
 
     byte[] GetSystemInfoAnswer = null;
     byte[] ReadMultipleBlockAnswer = null;
-    byte[] block012 =null;
-    byte[] block3536=null;
-    byte[] blockVol=null;
-    int nbblocks = 0;
+    byte[] BlockVol = null;
+    byte[] BlockID = null;
+    byte[] Block1234 = null;
 
+    int nbblocks = 0;
     String sNbOfBlock = null;
-    // o byte numberOfBlockToRead;
     byte[] numberOfBlockToRead = null;
 
     String startAddressString = null;
     byte[] addressStart = null;
 
-    String ID = "";
-    double H2O = 0;
-    String From = "0000";
-    String To = "0035";
-    List<dataRow> listOfData = new ArrayList<dataRow>();
-    AdapterShowData adapterShowData;
+    String From = "0025";
+    String To = "0009";
+
     private AlertDialog alertDialog;
-    //action= "lcdOn", "lcdOff", "read"
-    /**
-     * action= "lcdOn", "lcdOff", "read"
-     */
-    String action="read";
-    private byte[] WriteSingleBlockAnswer=null;
+    String action = "read";
+    private byte[] WriteSingleBlockAnswer = null;
+
+    private static byte[] intToByte(int value) {
+        return ByteBuffer.allocate(4).putInt(value).array();
+    }
+
+    public static byte[] longToByte(long value) {
+        byte[] data = new byte[4];
+        data[0] = (byte) value;
+        data[1] = (byte) (value >>> 8);
+        data[2] = (byte) (value >>> 16);
+        data[3] = (byte) (value >>> 32);
+        return data;
+    }
+
+    public static byte[] stringToBytesASCII(String str) {
+        str= str.trim();
+        if (str.length()==0)
+            return null;
+        if (str.length()>12){
+            str= str.substring(0,12);
+        }
+        byte[] b = str.getBytes();
+        if (b.length<12){
+            byte[] copiedArray = Arrays.copyOf(b, 12);
+            return  copiedArray;
+        }
+        return b;
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,23 +110,10 @@ public class MainActivity extends AppCompatActivity {
                 requestPermission();
             }
         }
-        FloatingActionButton fab = findViewById(R.id.fab3);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
-            }
-        });
-        tvID = findViewById(R.id.tvID);
-        tvVol = findViewById(R.id.tvVol);
-        listDev= findViewById(R.id.listview1);
-        //btnRead= findViewById(R.id.btnRead);
-       // btnOffLcd= findViewById(R.id.btnOffLcd);
-       // btnOnLcd= findViewById(R.id.btnOnLcd);
-        rdbRead= findViewById(R.id.rdbRead);
-        rdbOffLcd= findViewById(R.id.rdbOffLCD);
-        rdbOnLcd= findViewById(R.id.rdbOnLCD);
+        ckbSetID = findViewById(R.id.ckb_set_ID);
+        edtVol = findViewById(R.id.edtVolume);
+        rdbRead = findViewById(R.id.rdbRead);
+        rdbWrite = findViewById(R.id.rdbWrite);
         mAdapter = NfcAdapter.getDefaultAdapter(this);
         mPendingIntent = PendingIntent.getActivity(this, 0, new Intent(this,
                 getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0);
@@ -128,75 +121,46 @@ public class MainActivity extends AppCompatActivity {
         mFilters = new IntentFilter[]{ndef,};
         mTechLists = new String[][]{new String[]{android.nfc.tech.NfcV.class
                 .getName()}};
-        listOfData.add(new dataRow("ID", "VOL", "TIME"));
-        /*for (int i=0; i<100;i++){
-            listOfData.add(new dataRow("123456", "0000.0000", "12/3/2020 21:36:33"));
-        }*/
 
-        adapterShowData= new AdapterShowData(this, listOfData);
-
-        listDev.setAdapter(adapterShowData);
         alertDialog = new AlertDialog.Builder(MainActivity.this).create();
         alertDialog.setTitle("To Read data");
         alertDialog.setMessage("Place your phone close to the screen of WaterMeter!");
         alertDialog.setCanceledOnTouchOutside(false);
-        alertDialog.show();
-        /*btnRead.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                action="read";
-                alertDialog.show();
-            }
-        });
-        btnOnLcd.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                action="lcdOn";
-                alertDialog.setTitle("To Turn On");
-                alertDialog.show();
-            }
-        });
-        btnOffLcd.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                action="lcdOff";
-                alertDialog.setTitle("To Turn Off");
-                alertDialog.show();
-            }
-        });*/
+        //alertDialog.show();
+
         rdbRead.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if (isChecked)
-                {
-                    action="read";
-                    alertDialog.setTitle("To Read data");
-                    alertDialog.show();
+                if (isChecked) {
+                    action = "read";
+                    /*alertDialog.setTitle("To Read data");
+                    alertDialog.show();*/
                 }
             }
         });
-        rdbOnLcd.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+        rdbWrite.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if (isChecked)
-                {
-                    action="lcdOn";
-                    alertDialog.setTitle("To Turn On");
-                    alertDialog.show();
+                if (isChecked) {
+                    action = "write";
+                    /*alertDialog.setTitle("To Turn On");
+                    alertDialog.show();*/
                 }
             }
         });
-        rdbOffLcd.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if (isChecked)
-                {
-                    action="lcdOff";
-                    alertDialog.setTitle("To Turn Off");
-                    alertDialog.show();
-                }
-            }
-        });
+        tvErrorCode = findViewById(R.id.tvErrorCode);
+        tvResetCount = findViewById(R.id.tvResetCount);
+        tvRssi = findViewById(R.id.tvRssi);
+        tvTimestart = findViewById(R.id.tvTimeStart);
+        tvTimeStop = findViewById(R.id.tvTimeStop);
+        edtWmid = findViewById(R.id.tvWmid);
+        ckbSetVol = findViewById(R.id.ckb_set_volume);
+        ckbSetNbOn = findViewById(R.id.ckb_nbon);
+        ckbSendLive = findViewById(R.id.ckb_sendlive);
+        ckbClearWarning = findViewById(R.id.ckb_clear_warning);
+        tvRtc = findViewById(R.id.tvRtc);
+        tvDgsID = findViewById(R.id.tvDgsID);
+
     }
 
     @Override
@@ -215,43 +179,13 @@ public class MainActivity extends AppCompatActivity {
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
-            ExportCSV();
-            return  true;
+
+            return true;
         }
 
         return super.onOptionsItemSelected(item);
     }
-    void  ExportCSV()  {
-       try {
-           if (listOfData.size()>1) {
-               File root = new File(Environment.getExternalStorageDirectory() + "/EWM02/");
-               if (!root.exists()) root.mkdirs();
-               Calendar cal = Calendar.getInstance();
-               SimpleDateFormat dateFormat = new SimpleDateFormat("dd_MM_yyyy HH_mm_ss");
-               String sFileName = "EWM02_" + dateFormat.format( cal.getTime()) + ".csv";
-               File gpxfile = new File(root, sFileName);
-               String filePath = gpxfile.getAbsolutePath();
-               FileWriter writer = new FileWriter(gpxfile);
-               for (int i = 0; i < listOfData.size(); i++) {
-                   writer.append(listOfData.get(i).getId());
-                   writer.append(',');
-                   writer.append(listOfData.get(i).getVol());
-                   writer.append(',');
-                   writer.append(listOfData.get(i).getTime());
-                   writer.append('\n');
-               }
-               writer.flush();
-               writer.close();
-               Toast.makeText(getApplicationContext(), "File is exported", Toast.LENGTH_SHORT).show();
-           }
-           else {
-               Toast.makeText(getApplicationContext(), "Error. The list is empty!", Toast.LENGTH_SHORT).show();
-           }
-       }
-       catch (IOException io){
 
-       }
-    }
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -265,18 +199,16 @@ public class MainActivity extends AppCompatActivity {
                     "Invalid parameters, please modify",
                     Toast.LENGTH_LONG).show();
         }
-        if (alertDialog!=null){
-            if (alertDialog.isShowing()){
+        if (alertDialog != null) {
+            if (alertDialog.isShowing()) {
                 alertDialog.dismiss();
             }
         }
     }
 
-    public void checkNFC()
-    {
+    public void checkNFC() {
         AlertDialog.Builder builder;
-        if (mAdapter != null)
-        {
+        if (mAdapter != null) {
             if (mAdapter.isEnabled() == false) {
                 builder = new AlertDialog.Builder(this);
                 builder.setMessage("Go to Settings ?")
@@ -286,8 +218,7 @@ public class MainActivity extends AppCompatActivity {
                                 //finish();
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
                                     startActivity(new Intent(Settings.ACTION_NFC_SETTINGS));
-                                }
-                                else {
+                                } else {
                                     startActivity(new Intent(Settings.ACTION_WIRELESS_SETTINGS));
                                 }
 
@@ -305,8 +236,7 @@ public class MainActivity extends AppCompatActivity {
                 alert.setTitle("NFC not enabled");
                 alert.show();
             }
-        }
-        else {
+        } else {
             AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
             alertDialog.setTitle("No NFC available");
             alertDialog.setMessage("App is going to be closed.");
@@ -320,6 +250,7 @@ public class MainActivity extends AppCompatActivity {
             alertDialog.show();
         }
     }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -331,6 +262,7 @@ public class MainActivity extends AppCompatActivity {
         //Show dialog
 
     }
+
     protected boolean checkPermission() {
         int result = ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
         if (result == PackageManager.PERMISSION_GRANTED) {
@@ -339,6 +271,7 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
+
     protected void requestPermission() {
 
         if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
@@ -349,6 +282,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
         switch (requestCode) {
@@ -361,37 +295,35 @@ public class MainActivity extends AppCompatActivity {
                 break;
         }
     }
-    private boolean writeMessage()
-    {
-        if (WriteSingleBlockAnswer==null)
-        {
+
+    private boolean writeMessage() {
+        if (WriteSingleBlockAnswer == null) {
             Toast.makeText(getApplicationContext(), "ERROR Write (No tag answer) ", Toast.LENGTH_SHORT).show();
             return false;
-        }
-        else if(WriteSingleBlockAnswer[0]==(byte)0x01)
-        {
+        } else if (WriteSingleBlockAnswer[0] == (byte) 0x01) {
             Toast.makeText(getApplicationContext(), "ERROR Write. Please, place your phone near the tag.", Toast.LENGTH_SHORT).show();
             return false;
-        }
-        else if(WriteSingleBlockAnswer[0]==(byte)0xFF)
-        {
+        } else if (WriteSingleBlockAnswer[0] == (byte) 0xFF) {
             Toast.makeText(getApplicationContext(), "ERROR Write. Please, place your phone near the tag.", Toast.LENGTH_SHORT).show();
             return false;
-        }
-        else if(WriteSingleBlockAnswer[0]==(byte)0x00)
-        {
-            //Toast.makeText(getApplicationContext(), "Write Sucessfull ", Toast.LENGTH_SHORT).show();
-            //finish();
+        } else if (WriteSingleBlockAnswer[0] == (byte) 0x00) {
+
             return true;
-        }
-        else
-        {
+        } else {
             Toast.makeText(getApplicationContext(), "Write ERROR. Please, place your phone near the tag.", Toast.LENGTH_SHORT).show();
             return false;
         }
     }
+
     private class StartReadTask extends AsyncTask<Void, Void, Void> {
         private final ProgressDialog dialog = new ProgressDialog(MainActivity.this);
+        //block 06
+        char[] byte1bit = new char[]{'0', '1', '0', '0', '1', '0', '0', '0'};
+        char[] byte3bit = new char[]{'0', '0', '0', '0', '0', '0', '0', '0'};
+        char[] byte2bit = new char[]{'0', '0', '0', '0', '0', '0', '0', '0'};
+        int vol = 0;
+        String WMID = "";
+
         @Override
         protected void onPreExecute() {
             DataDevice dataDevice = (DataDevice) getApplication();
@@ -407,9 +339,44 @@ public class MainActivity extends AppCompatActivity {
                 sNbOfBlock = To;
                 sNbOfBlock = Helper.FormatStringNbBlockInteger(sNbOfBlock,
                         startAddressString, dataDevice);
-                numberOfBlockToRead = Helper
+                /*numberOfBlockToRead = Helper
                         .ConvertIntTo2bytesHexaFormat(Integer
-                                .parseInt(sNbOfBlock));
+                                .parseInt(sNbOfBlock));*/
+                sNbOfBlock = "0003";//doc 3 byte
+                numberOfBlockToRead = new byte[]{0, 3};
+                //send live data
+                if (ckbSendLive.isChecked())
+                    byte1bit[2] = '1';
+                else
+                    byte1bit[2] = '0';
+                //for NB On/off
+                if (ckbSetNbOn.isChecked())
+                    byte3bit[0] = '1';
+                else
+                    byte3bit[0] = '0';
+                //for set VOL
+                if (ckbSetVol.isChecked())
+                    byte3bit[6] = '1';
+                else
+                    byte3bit[6] = '0';
+                //bit clear warning=
+                if (ckbClearWarning.isChecked())
+                    byte3bit[5] = '1';
+                else
+                    byte3bit[5] = '0';
+                //bit set WMID
+
+                if (ckbSetID.isChecked())
+                    byte2bit[5] = '1';
+                else
+                    byte2bit[5] = '0';
+
+                if (ckbSetVol.isChecked()) {
+                    if (edtVol.length() > 0)
+                        vol = Integer.parseInt(edtVol.getText().toString());
+                }
+
+
                 this.dialog
                         .setMessage("Please, keep your phone close to the tag");
                 this.dialog.show();
@@ -426,6 +393,9 @@ public class MainActivity extends AppCompatActivity {
             ma = (DataDevice) getApplication();
 
             ReadMultipleBlockAnswer = null;
+            BlockVol = null;
+            Block1234 = null;
+            BlockID = null;
             /*block012 =null;
             block3536=null;
             blockVol=null;*/
@@ -433,11 +403,11 @@ public class MainActivity extends AppCompatActivity {
 
             if (DecodeGetSystemInfoResponse(GetSystemInfoAnswer)) {
                 try {
-                    Thread.sleep(2000);
+                    Thread.sleep(2500);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                if(action=="read") {
+                if (action == "read") {
                     if (ma.isMultipleReadSupported() == false
                             || Helper.Convert2bytesHexaFormatToInt(numberOfBlockToRead) <= 1) {
                         while ((ReadMultipleBlockAnswer == null || ReadMultipleBlockAnswer[0] == 1)
@@ -446,6 +416,31 @@ public class MainActivity extends AppCompatActivity {
                             cpt++;
                         }
                         cpt = 0;
+                        addressStart[1] = 8;
+                        numberOfBlockToRead[1] = 1;
+                        while ((BlockVol == null || BlockVol[0] == 1)
+                                && cpt <= 10) {
+                            BlockVol = NFCCommand.Send_several_ReadSingleBlockCommands_NbBlocks(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
+                            cpt++;
+                        }
+                        //Read WMID
+                        cpt = 0;
+                        addressStart[1] = 9;
+                        numberOfBlockToRead[1] = 3;
+                        while ((BlockID == null || BlockID[0] == 1)
+                                && cpt <= 10) {
+                            BlockID = NFCCommand.Send_several_ReadSingleBlockCommands_NbBlocks(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
+                            cpt++;
+                        }
+                        //read block 1,2,3,4
+                        cpt = 0;
+                        addressStart[1] = 1;
+                        numberOfBlockToRead[1] = 4;
+                        while ((Block1234 == null || Block1234[0] == 1)
+                                && cpt <= 10) {
+                            Block1234 = NFCCommand.Send_several_ReadSingleBlockCommands_NbBlocks(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
+                            cpt++;
+                        }
                     } else if (Helper.Convert2bytesHexaFormatToInt(numberOfBlockToRead) < 32) {
                         while ((ReadMultipleBlockAnswer == null || ReadMultipleBlockAnswer[0] == 1)
                                 && cpt <= 10) {
@@ -461,84 +456,38 @@ public class MainActivity extends AppCompatActivity {
                             cpt++;
                         }
                         cpt = 0;
-                    /*numberOfBlockToRead= new byte[2];
-                    addressStart= new byte[2];
-                    numberOfBlockToRead[0]=0;
-                    numberOfBlockToRead[1]=3;
 
-                    addressStart[0]=0;
-                    addressStart[1]=0;
-                    //block 0102
-                    while ((block012 == null || block012[0] == 1) && cpt <= 10) {
-                        block012 = NFCCommand.SendReadMultipleBlockCommandCustom2(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
-                        cpt++;
                     }
-                    //block 0x35,0x36 ID
-                    addressStart[1]=53;
-                    numberOfBlockToRead[1]=2;
-                    cpt = 0;
-                    while ((block3536 == null || block3536[0] == 1) && cpt <= 10) {
-                        block3536 = NFCCommand.SendReadMultipleBlockCommandCustom2(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
-                        cpt++;
-                    }
-                    //block VOL
-                    cpt = 0;
-                    // dem tu 0 den 22 ->
-                    if (block012 != null && block012.length - 1 > 0) {
-                        if (block012[0] == 0x00) {
-                            catValueBlocks = Helper.buildArrayValueBlocks(block012, 3);
-                            String currentHour = ConvertBlockToLong(catValueBlocks[2]);
-                            long tempHour = Long.parseLong(currentHour) & 0x3ff;
-                            long ampm = tempHour >> 9;
-                            tempHour = Long.parseLong(currentHour) & 0x1ff;
-                            long hourMode = tempHour >> 8;
-                            int cHour = (int) ((tempHour & 255) >> 3);
-
-                            int temp = 0;
-                            if (hourMode == 1) { //24h
-                                temp = cHour;
-                            } else {
-                                if (ampm == 1) { //pm
-                                    if (cHour == 12) {
-                                        temp = cHour;
-                                    } else {
-                                        temp = 12 + cHour;
-                                    }
-                                } else {
-                                    if (cHour == 12) {
-                                        temp = 0;
-                                    } else {
-                                        temp = cHour;
-                                    }
-                                }
-                            }
-                            addressStart[1]= (byte) (temp+16);
-                            numberOfBlockToRead[1]=1;
-                            cpt = 0;
-                            while ((blockVol == null || blockVol[0] == 1) && cpt <= 10) {
-                                blockVol = NFCCommand.SendReadMultipleBlockCommandCustom2(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
-                                cpt++;
-                            }
+                } else if (action == "write") {
+                    short byte01 = Short.parseShort(new String(byte1bit), 2);
+                    byte byte03 = (byte) Short.parseShort(new String(byte3bit), 2);
+                    byte byte02 = (byte) Short.parseShort(new String(byte2bit), 2);
+                    byte[] block6Data = new byte[]{byte03, byte02, (byte) byte01, 0x00};
+                    byte[] blockVol = longToByte(vol);
+                    startAddressString = Helper.castHexKeyboard("06");
+                    startAddressString = Helper.FormatStringAddressStart(startAddressString, dataDevice);
+                    addressStart = Helper.ConvertStringToHexBytes(startAddressString);
+                    WriteSingleBlockAnswer = NFCCommand.SendWriteSingleBlockCommand(dataDevice.getCurrentTag(), addressStart, block6Data, ma);
+                    addressStart[0] = 0;
+                    addressStart[1] = 8;
+                    WriteSingleBlockAnswer = NFCCommand.SendWriteSingleBlockCommand(dataDevice.getCurrentTag(), addressStart, blockVol, ma);
+                    if (ckbSetID.isChecked() ) {
+                        byte[] blockWMID = stringToBytesASCII(edtWmid.getText().toString());
+                        if (blockWMID!=null){
+                            addressStart[0] = 0;
+                            addressStart[1] = 9;
+                            WriteSingleBlockAnswer = NFCCommand.SendWriteMultipleBlockCommand(dataDevice.getCurrentTag(), addressStart, blockWMID, ma);
                         }
-                    }*/
                     }
-                }
-                else if(action=="lcdOn") {
-                    byte[]blockData= new byte[]{0x04,0x00,0x32,0x18};
-                    startAddressString = Helper.castHexKeyboard("0F");
-                    startAddressString = Helper.FormatStringAddressStart(startAddressString, dataDevice);
-                    addressStart = Helper.ConvertStringToHexBytes(startAddressString);
-                    WriteSingleBlockAnswer = NFCCommand.SendWriteSingleBlockCommand(dataDevice.getCurrentTag(), addressStart, blockData, ma);
-                }
-                else if(action=="lcdOff"){
-                    byte[]blockData= new byte[]{0x03,0x00,0x32,0x18};
+                } else if (action == "lcdOff") {
+                    byte[] blockData = new byte[]{0x03, 0x00, 0x32, 0x18};
                     startAddressString = Helper.castHexKeyboard("0F");
                     startAddressString = Helper.FormatStringAddressStart(startAddressString, dataDevice);
                     addressStart = Helper.ConvertStringToHexBytes(startAddressString);
                     WriteSingleBlockAnswer = NFCCommand.SendWriteSingleBlockCommand(dataDevice.getCurrentTag(), addressStart, blockData, ma);
                 }
 
-            }/**/
+            }
 
             return null;
         }
@@ -550,77 +499,54 @@ public class MainActivity extends AppCompatActivity {
             if (this.dialog.isShowing())
                 this.dialog.dismiss();
             if (DecodeGetSystemInfoResponse(GetSystemInfoAnswer)) {
-                if (action=="read") {
+                if (action == "read") {
                     nbblocks = Integer.parseInt(sNbOfBlock);
                     if (ReadMultipleBlockAnswer != null && ReadMultipleBlockAnswer.length - 1 > 0) {
                         if (ReadMultipleBlockAnswer[0] == 0x00) {
                             //catBlocks = Helper.buildArrayBlocks(addressStart, nbblocks);
                             catValueBlocks = Helper.buildArrayValueBlocks(ReadMultipleBlockAnswer, nbblocks);
-                            //catValueBlocks= Helper.buildArrayValueBlocks(block3536,2);
-                            //String[] block54 = catValueBlocks[54].split("  ");
-                            //String yearID = String.valueOf(Integer.parseInt(block54[0].trim(), 16));
+                            tvResetCount.setText(ReadMultipleBlockAnswer[3] + "");
+                            tvTimestart.setText(ReadMultipleBlockAnswer[5] + "- " + ReadMultipleBlockAnswer[6] + ":" +
+                                    ReadMultipleBlockAnswer[7] + ":" + ReadMultipleBlockAnswer[8]);
+                            tvErrorCode.setText(ReadMultipleBlockAnswer[9] + "");
+                            tvRssi.setText(ReadMultipleBlockAnswer[10] + "");
+                            tvTimeStop.setText(ReadMultipleBlockAnswer[11] + ":" + ReadMultipleBlockAnswer[12]);
+                            //long length= ByteBuffer.wrap(BlockVol).order(ByteOrder.LITTLE_ENDIAN).getInt() & 0xFFFFFFFFL;
+                            int volume = ByteBuffer.wrap(BlockVol, 1, 4).getInt();
+                            long l = ((BlockVol[4] & 0xFFL) << 24) |
+                                    ((BlockVol[3] & 0xFFL) << 16) |
+                                    ((BlockVol[2] & 0xFFL) << 8) |
+                                    ((BlockVol[1] & 0xFFL) << 0);
+                            edtVol.setText(String.valueOf(l));
+                            String s = new String(BlockID);
+                            edtWmid.setText(s);
+                            long rtc = ((Block1234[4] & 0xFFL) << 24) |
+                                    ((Block1234[3] & 0xFFL) << 16) |
+                                    ((Block1234[2] & 0xFFL) << 8) |
+                                    ((Block1234[1] & 0xFFL) << 0);
+                            int year = (int) (rtc & 0x7f);
+                            int month = (int) ((rtc >> 7) & 0x0f);
+                            int day = (int) ((rtc >> 11) & 0x1f);
+                            rtc = ((Block1234[8] & 0xFFL) << 24) |
+                                    ((Block1234[7] & 0xFFL) << 16) |
+                                    ((Block1234[6] & 0xFFL) << 8) |
+                                    ((Block1234[5] & 0xFFL) << 0);
+                            int hour = (int) ((rtc >> 3) & 0x1f);
+                            int minute = (int) ((rtc >> 8) & 0x3f);
+                            int second = (int) ((rtc >> 14) & 0x3f);
+                            tvRtc.setText(String.valueOf(day) + "/" + month + "/" + year + " " + hour + ":" +
+                                    minute + ":" + second);
+                            rtc = ((Block1234[12] & 0xFFL) << 24) |
+                                    ((Block1234[11] & 0xFFL) << 16) |
+                                    ((Block1234[10] & 0xFFL) << 8) |
+                                    ((Block1234[9] & 0xFFL) << 0);
+                            long dgsId = rtc & 0xffffff;
+                            int dgsMonth = (int) ((rtc >> 24) & 0xff);
 
-                            String[] block53 = catValueBlocks[53].split("  ");
-                            String trueID = new DecimalFormat("00000000").format(Integer.parseInt(block53[2].trim() + block53[1].trim() + block53[0].trim(), 16));
-                            //System.out.println("trueID: " + trueID + "_" + block53[2] + "." + block53[1] + "." + block53[0]);
-                            ID = String.valueOf(new DecimalFormat("00").format(Integer.parseInt(block53[3].trim(), 16))) + trueID;
-                            //System.out.println("trueID: " + trueID + "_" + block36[2] + "." + block36[1] + "." + block36[0]);
+                            int dgsYear = Block1234[13];
 
-                        /*if (listOfData.size() > 0) {
-                            for (int i = 0; i < listOfData.size(); i++) {
-                                if (listOfData.get(i).getId().equalsIgnoreCase(ID)) {
-                                    return;
-                                }
-                            }
-                        }*/
+                            tvDgsID.setText(String.format("%02d", dgsMonth) + String.format("%02d", dgsYear) + String.format("%05d", dgsId));
 
-                            // xac dinh so nuoc
-                            String currentHour = ConvertBlockToLong(catValueBlocks[2]);
-                            long tempHour = Long.parseLong(currentHour) & 0x3ff;
-                            long ampm = tempHour >> 9;
-                            tempHour = Long.parseLong(currentHour) & 0x1ff;
-                            long hourMode = tempHour >> 8;
-                            int cHour = (int) ((tempHour & 255) >> 3);
-
-                            int temp = 0;
-                            if (hourMode == 1) { //24h
-                                temp = cHour;
-                            } else {
-                                if (ampm == 1) { //pm
-                                    if (cHour == 12) {
-                                        temp = cHour;
-                                    } else {
-                                        temp = 12 + cHour;
-                                    }
-                                } else {
-                                    if (cHour == 12) {
-                                        temp = 0;
-                                    } else {
-                                        temp = cHour;
-                                    }
-                                }
-                            }
-                            H2O = Double.valueOf(ConvertBlockToLong(catValueBlocks[temp + 16])) / 10000.0000;
-                            tvID.setText(ID);
-                            String vol = new DecimalFormat("0000.0000").format(H2O);
-                            tvVol.setText(vol + " m3");
-                            Log.d("TEST VOL", vol);
-                            //Datetime.now
-                            Date currentTime = Calendar.getInstance().getTime();
-                            //add or update to listview
-                            SimpleDateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
-                            for (int i = 0; i < listOfData.size(); i++) {
-                                if (listOfData.get(i).getId().equalsIgnoreCase(ID)) {
-                                    listOfData.get(i).setVol(vol);
-                                    listOfData.get(i).setTime(dateFormat.format(currentTime));
-                                    adapterShowData.notifyDataSetChanged();
-                                    listDev.setSelection(i);
-                                    return;
-                                }
-                            }
-                            listOfData .add(new dataRow(ID, vol, dateFormat.format(currentTime)));
-                            adapterShowData.notifyDataSetChanged();
-                            listDev.setSelection(listOfData.size() - 1);
                         } else {
                             Toast.makeText(getApplicationContext(), "ERROR Read ",
                                     Toast.LENGTH_LONG).show();
@@ -628,17 +554,16 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         Toast.makeText(getApplicationContext(), "ERROR Read (no Tag answer) ", Toast.LENGTH_LONG).show();
                     }
-                }else if(action=="lcdOn"){
-                    if (writeMessage()){
-                        Toast.makeText(getApplicationContext(), "LCD ON ", Toast.LENGTH_SHORT).show();
+                } else if (action == "write") {
+                    if (writeMessage()) {
+                        Toast.makeText(getApplicationContext(), "Write successfully ", Toast.LENGTH_SHORT).show();
                     }
 
-                }else if(action=="lcdOff"){
+                } else if (action == "lcdOff") {
                     if (writeMessage())
                         Toast.makeText(getApplicationContext(), "LCD OFF", Toast.LENGTH_SHORT).show();
                 }
-            }
-            else {
+            } else {
                 Toast.makeText(getApplicationContext(), "ERROR Read (no Tag answer) ", Toast.LENGTH_LONG).show();
             }
         }
@@ -793,12 +718,12 @@ public class MainActivity extends AppCompatActivity {
                         .ConvertHexByteToString(GetSystemInfoResponse[12]));
 
             // *** BLOCK SIZE ***
-            if (ma.isBasedOnTwoBytesAddress())
+            /*if (ma.isBasedOnTwoBytesAddress())
                 ma.setBlockSize(Helper
                         .ConvertHexByteToString(GetSystemInfoResponse[14]));
             else
                 ma.setBlockSize(Helper
-                        .ConvertHexByteToString(GetSystemInfoResponse[13]));
+                        .ConvertHexByteToString(GetSystemInfoResponse[12]));
 
             // *** IC REFERENCE ***
             if (ma.isBasedOnTwoBytesAddress())
@@ -806,7 +731,7 @@ public class MainActivity extends AppCompatActivity {
                         .ConvertHexByteToString(GetSystemInfoResponse[15]));
             else
                 ma.setIcReference(Helper
-                        .ConvertHexByteToString(GetSystemInfoResponse[14]));
+                        .ConvertHexByteToString(GetSystemInfoResponse[14]));*/
 
             return true;
         } else

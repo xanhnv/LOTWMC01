@@ -137,11 +137,7 @@ public class NFCCommand {
                     ma.setBasedOnTwoBytesAddress(false);
                     boolDeviceDetected = true;
                 }
-                else if (response[7] >= (byte) 0x26 && response[7] <= (byte) 0x5B) {
-                    //ma.setProductName("M24LR04E");
-                    ma.setBasedOnTwoBytesAddress(true);
-                    boolDeviceDetected = true;
-                }
+
                 else if (response[7] >= (byte) 0x5C && response[7] <= (byte) 0x5F) {
                     //ma.setProductName("M24LR64E");
                     ma.setBasedOnTwoBytesAddress(true);
@@ -162,8 +158,13 @@ public class NFCCommand {
                     //ma.setProductName("detected product");	This product doesn't exists
                     ma.setBasedOnTwoBytesAddress(true);
                     boolDeviceDetected = true;
-                } else {
-                    //ma.setProductName("Unknown product");
+                }  else if (response[7] >= (byte) 0x26) {
+                //ma.setProductName("detected product");	new product
+                ma.setBasedOnTwoBytesAddress(false);
+                boolDeviceDetected = true;
+            }
+                else {
+                    ma.setProductName("Unknown product");
                     ma.setBasedOnTwoBytesAddress(true);
                     boolDeviceDetected = false;
                 }
@@ -185,7 +186,7 @@ public class NFCCommand {
 
         response = new byte[]{(byte) 0xAA};
         byte[] GetSystemInfoFrame2bytesAddress = new byte[2];
-        GetSystemInfoFrame2bytesAddress = new byte[]{(byte) 0x02, (byte) 0x2B};
+        GetSystemInfoFrame2bytesAddress = new byte[]{(byte) 0x0A, (byte) 0x2B};
         byte[] GetSystemInfoFrame1bytesAddress = new byte[2];
         GetSystemInfoFrame1bytesAddress = new byte[]{(byte) 0x02, (byte) 0x2B};
 
@@ -224,7 +225,7 @@ public class NFCCommand {
             ma.setBasedOnTwoBytesAddress(true);
 
             //1st flag=1 for 2 bytes address products
-            GetSystemInfoFrame = new byte[]{(byte) 0x0A, (byte) 0x2B};
+            GetSystemInfoFrame = new byte[]{(byte) 0x02, (byte) 0x2B};
             while ((response == null || response[0] == (byte) 0xAA) && cpt <= 1) {
                 try {
                     NfcV nfcvTag = NfcV.get(myTag);
