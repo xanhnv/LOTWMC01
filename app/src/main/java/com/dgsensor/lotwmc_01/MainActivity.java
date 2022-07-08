@@ -8,6 +8,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.os.AsyncTask;
@@ -19,6 +20,7 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import android.os.Environment;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
@@ -30,15 +32,21 @@ import android.widget.RadioButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.lang.reflect.Array;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 
 public class MainActivity extends AppCompatActivity {
 
     RadioButton rdbRead, rdbWrite;
-    TextView tvResetCount, tvTimestart, tvTimeStop, tvErrorCode, tvRssi,  tvRtc, tvDgsID;
-    CheckBox ckbSetVol, ckbSetNbOn, ckbSendLive, ckbClearWarning, ckbSetID;
+    TextView tvResetCount, tvTimestart, tvTimeStop, tvErrorCode, tvRssi, tvRtc, tvDgsID, tvWmid;
+    CheckBox ckbSetVol, ckbSetNbOn, ckbSendLive, ckbClearWarning, ckbSetID, ckbSetSurvey;
     EditText edtVol, edtWmid;
     private NfcAdapter mAdapter;
     private PendingIntent mPendingIntent;
@@ -81,19 +89,100 @@ public class MainActivity extends AppCompatActivity {
         return data;
     }
 
-    public static byte[] stringToBytesASCII(String str) {
-        str= str.trim();
-        if (str.length()==0)
+    private boolean checkStoragePermission(boolean showNotification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+                return true;
+            } else {
+                if (showNotification) showNotificationAlertToAllowPermission();
+                return false;
+            }
+        } else {
+            return true;
+        }
+    }
+
+    public void processCSV(String logdata) {
+
+        try {
+
+            boolean writePermissionStatus = checkStoragePermission(false);
+            //Check for permission
+            if (!writePermissionStatus) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+                return;
+            } else {
+                boolean writePermissionStatusAgain = checkStoragePermission(true);
+                if (!writePermissionStatusAgain) {
+                    Toast.makeText(this, "Permission not granted", Toast.LENGTH_LONG).show();
+                    return;
+                } else {
+                    //Permission Granted. Export
+                    exportDataToCSV(logdata);
+
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static String toCSV(String[] array) {
+        String result = "";
+        if (array.length > 0) {
+            StringBuilder sb = new StringBuilder();
+            for (String s : array) {
+                sb.append(s.trim()).append(",");
+            }
+            result = sb.deleteCharAt(sb.length() - 1).toString();
+        }
+        return result;
+    }
+
+    private void exportDataToCSV(String csvData) throws IOException {
+
+        File directory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        String uniqueFileName = "FileLog_LOTWMC01.csv";
+        File file = new File(directory, uniqueFileName);
+        FileWriter fileWriter = new FileWriter(file, true);
+        fileWriter.write(csvData);
+        fileWriter.flush();
+        fileWriter.close();
+        Toast.makeText(MainActivity.this, "File Exported Successfully", Toast.LENGTH_LONG).show();
+
+    }
+
+    private void showNotificationAlertToAllowPermission() {
+        new AlertDialog.Builder(this).setMessage("Please allow Storage Read/Write permission for this app to function properly.").setPositiveButton("Open Settings", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface paramDialogInterface, int paramInt) {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Uri uri = Uri.fromParts("package", getPackageName(), null);
+                intent.setData(uri);
+                startActivity(intent);
+            }
+        }).setNegativeButton("Cancel", null).show();
+
+    }
+
+
+    public byte[] stringToBytesASCII(String str) {
+        str = str.trim();
+        if (str.length() == 0)
             return null;
-        if (str.length()>12){
+        /*if (str.length()>12){
             str= str.substring(0,12);
-        }
+        }*/
+        /*byte[] bi= new byte[12];
+        char [] str2= str.toCharArray();
+        for (int i=0;i<str.length(); i++){
+            bi[i]= (byte) str2[i];
+        }*/
         byte[] b = str.getBytes();
-        if (b.length<12){
-            byte[] copiedArray = Arrays.copyOf(b, 12);
-            return  copiedArray;
-        }
-        return b;
+        byte[] copiedArray = Arrays.copyOf(b, 12);
+
+        return copiedArray;
     }
 
     @Override
@@ -111,6 +200,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         ckbSetID = findViewById(R.id.ckb_set_ID);
+        ckbSetSurvey = findViewById(R.id.ckb_set_survey);
         edtVol = findViewById(R.id.edtVolume);
         rdbRead = findViewById(R.id.rdbRead);
         rdbWrite = findViewById(R.id.rdbWrite);
@@ -160,7 +250,7 @@ public class MainActivity extends AppCompatActivity {
         ckbClearWarning = findViewById(R.id.ckb_clear_warning);
         tvRtc = findViewById(R.id.tvRtc);
         tvDgsID = findViewById(R.id.tvDgsID);
-
+        tvWmid = findViewById(R.id.tvWMID);
     }
 
     @Override
@@ -178,7 +268,7 @@ public class MainActivity extends AppCompatActivity {
         int id = item.getItemId();
 
         //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
+        if (id == R.id.action_export_csv) {
 
             return true;
         }
@@ -315,7 +405,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    //byte [] editbyte= new byte[12];
     private class StartReadTask extends AsyncTask<Void, Void, Void> {
+        public byte[] EditextToByes(String text) throws UnsupportedEncodingException {
+            //byte [] editbyte= text.getBytes();
+           /* text= "Vai dan";
+            Charset charset = Charset.forName("ASCII");*/
+            char[] charArray = text.trim().toCharArray();
+            if (charArray == null)
+                return null;
+            int iLen = charArray.length;
+            byte[] byteArrray = new byte[iLen];
+            for (int p = 0; p < iLen; p++)
+                byteArrray[p] = (byte) (charArray[p]);
+            //byte [] byteArrray = text.getBytes("ASCII");
+            byte[] copiedArray = Arrays.copyOf(byteArrray, 12);
+            return copiedArray;
+        }
+
         private final ProgressDialog dialog = new ProgressDialog(MainActivity.this);
         //block 06
         char[] byte1bit = new char[]{'0', '1', '0', '0', '1', '0', '0', '0'};
@@ -371,6 +478,10 @@ public class MainActivity extends AppCompatActivity {
                 else
                     byte2bit[5] = '0';
 
+                if (ckbSetSurvey.isChecked())
+                    byte2bit[0] = '1';
+                else
+                    byte2bit[0] = '0';
                 if (ckbSetVol.isChecked()) {
                     if (edtVol.length() > 0)
                         vol = Integer.parseInt(edtVol.getText().toString());
@@ -471,13 +582,30 @@ public class MainActivity extends AppCompatActivity {
                     addressStart[0] = 0;
                     addressStart[1] = 8;
                     WriteSingleBlockAnswer = NFCCommand.SendWriteSingleBlockCommand(dataDevice.getCurrentTag(), addressStart, blockVol, ma);
-                    if (ckbSetID.isChecked() ) {
-                        byte[] blockWMID = stringToBytesASCII(edtWmid.getText().toString());
-                        if (blockWMID!=null){
+                    //Read DGS ID
+                    //read block 1,2,3,4
+                    cpt = 0;
+                    addressStart[1] = 1;
+                    numberOfBlockToRead[1] = 4;
+                    while ((Block1234 == null || Block1234[0] == 1)
+                            && cpt <= 10) {
+                        Block1234 = NFCCommand.Send_several_ReadSingleBlockCommands_NbBlocks(dataDevice.getCurrentTag(), addressStart, numberOfBlockToRead, dataDevice);
+                        cpt++;
+                    }
+                    if (ckbSetID.isChecked()) {
+                        byte[] blockWMID = new byte[0];
+                        try {
+                            blockWMID = EditextToByes(edtWmid.getText().toString());
+                        } catch (UnsupportedEncodingException e) {
+                            e.printStackTrace();
+                        }
+                        Log.d("writeSetting", Arrays.toString(blockWMID));
+                        if (blockWMID != null) {
                             addressStart[0] = 0;
                             addressStart[1] = 9;
                             WriteSingleBlockAnswer = NFCCommand.SendWriteMultipleBlockCommand(dataDevice.getCurrentTag(), addressStart, blockWMID, ma);
                         }
+
                     }
                 } else if (action == "lcdOff") {
                     byte[] blockData = new byte[]{0x03, 0x00, 0x32, 0x18};
@@ -518,7 +646,10 @@ public class MainActivity extends AppCompatActivity {
                                     ((BlockVol[2] & 0xFFL) << 8) |
                                     ((BlockVol[1] & 0xFFL) << 0);
                             edtVol.setText(String.valueOf(l));
-                            String s = new String(BlockID);
+                            String s = new String(BlockID).trim();
+                            char[] iS = s.toCharArray();
+                            tvWmid.setText(s);
+                            edtWmid.getText().clear();
                             edtWmid.setText(s);
                             long rtc = ((Block1234[4] & 0xFFL) << 24) |
                                     ((Block1234[3] & 0xFFL) << 16) |
@@ -546,7 +677,11 @@ public class MainActivity extends AppCompatActivity {
                             int dgsYear = Block1234[13];
 
                             tvDgsID.setText(String.format("%02d", dgsMonth) + String.format("%02d", dgsYear) + String.format("%05d", dgsId));
-
+                            Date currentTime = Calendar.getInstance().getTime();
+                            String logString = currentTime.toString() + ",read," + edtWmid.getText().toString() + "," + edtVol.getText().toString() +
+                                    "," + tvDgsID.getText().toString() + "," + tvRtc.getText().toString() + "," + tvResetCount.getText().toString() + "," + tvTimestart.getText() + "," +
+                                    tvErrorCode.getText().toString() + "," + tvRssi.getText().toString() + "," + tvTimeStop.getText().toString() + "\n";
+                            processCSV(logString);
                         } else {
                             Toast.makeText(getApplicationContext(), "ERROR Read ",
                                     Toast.LENGTH_LONG).show();
@@ -555,6 +690,43 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(getApplicationContext(), "ERROR Read (no Tag answer) ", Toast.LENGTH_LONG).show();
                     }
                 } else if (action == "write") {
+                    if (Block1234 != null) {
+                        if (Block1234[0] == 0x00) {
+                            long rtc = ((Block1234[4] & 0xFFL) << 24) |
+                                    ((Block1234[3] & 0xFFL) << 16) |
+                                    ((Block1234[2] & 0xFFL) << 8) |
+                                    ((Block1234[1] & 0xFFL) << 0);
+                            int year = (int) (rtc & 0x7f);
+                            int month = (int) ((rtc >> 7) & 0x0f);
+                            int day = (int) ((rtc >> 11) & 0x1f);
+                            rtc = ((Block1234[8] & 0xFFL) << 24) |
+                                    ((Block1234[7] & 0xFFL) << 16) |
+                                    ((Block1234[6] & 0xFFL) << 8) |
+                                    ((Block1234[5] & 0xFFL) << 0);
+                            int hour = (int) ((rtc >> 3) & 0x1f);
+                            int minute = (int) ((rtc >> 8) & 0x3f);
+                            int second = (int) ((rtc >> 14) & 0x3f);
+                            tvRtc.setText(String.valueOf(day) + "/" + month + "/" + year + " " + hour + ":" +
+                                    minute + ":" + second);
+                            rtc = ((Block1234[12] & 0xFFL) << 24) |
+                                    ((Block1234[11] & 0xFFL) << 16) |
+                                    ((Block1234[10] & 0xFFL) << 8) |
+                                    ((Block1234[9] & 0xFFL) << 0);
+                            long dgsId = rtc & 0xffffff;
+                            int dgsMonth = (int) ((rtc >> 24) & 0xff);
+                            int dgsYear = Block1234[13];
+                            tvDgsID.setText(String.format("%02d", dgsMonth) + String.format("%02d", dgsYear) + String.format("%05d", dgsId));
+
+                        }
+                        Date currentTime = Calendar.getInstance().getTime();
+                        String logString = currentTime.toString() + ",write," + edtWmid.getText().toString() + "," + edtVol.getText().toString() +
+                                "," + tvDgsID.getText().toString() + "," + tvRtc.getText().toString() + "," + tvResetCount.getText().toString() + "," + tvTimestart.getText() + "," +
+                                tvErrorCode.getText().toString() + "," + tvRssi.getText().toString() + "," + tvTimeStop.getText().toString()+"," + ckbClearWarning.isChecked() + "," +
+                                ckbSetVol.isChecked() + "," + ckbSetNbOn.isChecked() + "," + ckbSendLive.isChecked() + "," + ckbSetID.isChecked() + "," +
+                                ckbSetSurvey.isChecked() + "\n";
+                        processCSV(logString);
+                    }
+
                     if (writeMessage()) {
                         Toast.makeText(getApplicationContext(), "Write successfully ", Toast.LENGTH_SHORT).show();
                     }

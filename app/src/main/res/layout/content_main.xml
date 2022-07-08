@@ -114,6 +114,34 @@
             app:layout_constraintStart_toEndOf="@+id/textView"
             app:layout_constraintTop_toBottomOf="@+id/ckb_set_ID" />
 
+        <CheckBox
+            android:id="@+id/ckb_set_survey"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="Set Survey"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@+id/ckb_sendlive"
+            app:layout_constraintTop_toBottomOf="@+id/tvWmid"></CheckBox>
+        <TextView
+            android:id="@+id/textView22"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginLeft="20dp"
+            android:text="WMID:   "
+            app:layout_constraintTop_toBottomOf="@id/ckb_set_survey"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <TextView
+            android:id="@+id/tvWMID"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/textView2"
+            app:layout_constraintTop_toBottomOf="@+id/ckb_set_survey" />
+
 
         <TextView
             android:id="@+id/textView2"
@@ -122,7 +150,7 @@
             android:layout_marginStart="20dp"
             android:layout_marginLeft="20dp"
             android:text="DGS_ID:   "
-            app:layout_constraintBaseline_toBaselineOf="@+id/tvDgsID"
+            app:layout_constraintTop_toBottomOf="@id/tvWMID"
             app:layout_constraintEnd_toStartOf="@+id/tvDgsID"
             app:layout_constraintStart_toStartOf="parent" />
 
@@ -133,7 +161,7 @@
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toEndOf="@+id/textView2"
-            app:layout_constraintTop_toBottomOf="@+id/tvWmid" />
+            app:layout_constraintTop_toBottomOf="@+id/tvWMID" />
 
 
         <TextView
